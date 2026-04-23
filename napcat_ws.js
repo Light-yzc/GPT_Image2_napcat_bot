@@ -1,7 +1,7 @@
 import WebSocket from "ws"
 import { gen_img, get_discrption_from_img } from "./get_img.js"
 const token = 'yzcqwer'
-const WHITELIST = [861369046]
+const WHITELIST = []
 let self_qq_id = -999
 const ws = new WebSocket('ws://127.0.0.1:3001',{
     headers:{
@@ -19,7 +19,7 @@ class user_queue{
         if (this.queue.length >= this.maxsize) return 'FAIL! queue is full!'
         else {
             this.queue.push(task)
-            return `成功，排队中。当前在第${this.queue.length}位。生图时间较长，耐心等待喵～`
+            return `排队中。当前在第${this.queue.length}位。生图时间较长，耐心等待喵～`
         }
     }
     mypop(){
@@ -110,7 +110,7 @@ function send_group_img(ws, groupId, user_id, img_path, user_text) {
 	              {
 	                type: 'text',
 	                data: {
-	                  text:  `你请求的 **${user_text}** 生成好啦`
+	                  text:  `你请求的 **${user_text}** 生成好了喵！`
 	                }
 	              }
 	            ]
