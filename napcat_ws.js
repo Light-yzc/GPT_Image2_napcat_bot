@@ -261,6 +261,7 @@ ws.on("message", async (raw_data)=>{
                                     'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
                                     'user_id': data.user_id,
                                     })
+                                    return
                                 }
                             }
                         }
