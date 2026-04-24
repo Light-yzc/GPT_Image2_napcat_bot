@@ -1,21 +1,41 @@
 import WebSocket from "ws"
 import { gen_img, get_discrption_from_img } from "./get_img.js"
 const token = 'yzcqwer'
-const WHITELIST = []
+const WHITELIST = JSON.parse(process.env.WHITELIST || '[]')
 let self_qq_id = -999
+const DEBUG = process.env.DEBUG === '1'
 const ws = new WebSocket('ws://127.0.0.1:3001',{
     headers:{
         Authorization: `Bearer ${token}`
     },
 })
 const pendingMap = new Map()
+
+function logInfo(...args) {
+    console.log('[napcat]', ...args)
+}
+
+function logWarn(...args) {
+    console.warn('[napcat]', ...args)
+}
+
+function logError(...args) {
+    console.error('[napcat]', ...args)
+}
+
+function logDebug(...args) {
+    if (DEBUG) {
+        console.log('[napcat:debug]', ...args)
+    }
+}
+
 class user_queue{
     constructor(maxsize=5){
         this.queue = []
         this.maxsize = maxsize
     }
     mypush(task){
-        console.log('[debug]', this.queue)
+        logDebug('queue before push', this.queue)
         if (this.queue.length >= this.maxsize) return 'FAIL! queue is full!'
         else {
             this.queue.push(task)
@@ -32,6 +52,7 @@ class user_queue{
 }
 
 function sendGroupMsg(ws, groupId, message, user_id = 'none', echo = 'send_group_msg', use_forward=false) {
+    logDebug('send group message', { groupId, user_id, echo, use_forward })
     if (!use_forward){
         ws.send(JSON.stringify({
             action: 'send_group_msg',
@@ -142,7 +163,7 @@ function send_group_img(ws, groupId, user_id, img_path, user_text) {
 
 const userQueue = new user_queue()
 ws.on('open', () => {
-    console.log('connect ws sercer')
+    logInfo('websocket connected')
     ws.send(JSON.stringify(
         {
         action: 'get_login_info'
@@ -166,26 +187,27 @@ async function processQueue(ws) {
         while (userQueue.queue.length > 0) {
             const task = userQueue.mypop()
             try{
+                logInfo('start image task', { groupId: task.group_id, userId: task.user_id, prompt: task.data })
                 const result = await gen_img(task.data)
                 send_group_img(ws, task.group_id, task.user_id, result, task.data)
-                console.log(result)
-                console.log('生成完毕')
+                logInfo('image task finished', { output: result })
             } catch (err) {
-                 console.log('生成失败', err)
+                 logError('image task failed', err)
             } 
         }
     } catch(err) {
-        console.log('生成失败', err)
+        logError('queue processing failed', err)
     } finally {
         generation = false
     }
 }
 
 ws.on("message", async (raw_data)=>{
-    console.log('监听中')
+    logDebug('message received')
     let at_me = false
     let reply_msg = false
     let cur_reply_msg_id = null
+    let prev_text = ''
     const data = JSON.parse(raw_data)
     if (data?.status && data?.echo) {
         const pending = pendingMap.get(data.echo)
@@ -198,11 +220,14 @@ ws.on("message", async (raw_data)=>{
     const acc_info = data?.self_id
     if (acc_info) {
         self_qq_id = data.self_id
+        logInfo('login info loaded', { self_qq_id })
     }
-    console.dir(data, { depth: null })
-    if (WHITELIST.includes(data.group_id)) {
-    // console.log(msg_data)
-    for (const msg_data of data.message) {
+    logDebug('incoming payload', data)
+    if (WHITELIST.includes(String(data.group_id))) {
+    logDebug('message in whitelist group', { groupId: data.group_id })
+
+    try {
+            for (const msg_data of data.message) {
         //handle img gen
         if (msg_data.type === 'at') {
             if (String(msg_data.data.qq) === String(self_qq_id)) at_me = true
@@ -210,35 +235,62 @@ ws.on("message", async (raw_data)=>{
         if (msg_data.type === 'reply') {
             reply_msg = true
             cur_reply_msg_id = msg_data.data.id
-            // console.log(cur_reply_msg_id)
-            // console.log('/////////')
+            logDebug('reply message detected', { replyId: cur_reply_msg_id })
         }
         if (msg_data.type === 'text' && msg_data?.data?.text) {
-            // console.log(msg_data.data)
             if (msg_data.data.text.includes('/help')){
                 const help_msg = 'bot使用方法\r\n1.@bot生图 开始生成图片\r\n2.引用图片 然后输入`反推` 进行图片提示词反推'
                 sendGroupMsg(ws, data.group_id, help_msg, data.user_id)
                 return
             }
+
+
             if (msg_data.data.text.trim() != ''){
                 if(msg_data.data.text.trim().startsWith('生图') && at_me)
                 {
-                const chunked_data = msg_data.data.text.slice(5)
+                // const chunked_data = msg_data.data.text.slice(5)
+                const chunked_data = msg_data.data.text
+                logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data })
                 process_queue(ws, {
                         'group_id': data.group_id,
                         'data': chunked_data,
                         'user_id': data.user_id,
                 })
                 }
+
+
+                else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
+                    const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
+                    logDebug('reply target fetched', promise_data)
+                    if (promise_data.data?.message) {
+                        for (const msg of promise_data.data.message) {
+                            if (msg.type === 'text') {
+                                // console.log(JSON.stringify(msg))
+                                const forward_msg_data = msg.data?.text
+                                if (forward_msg_data) {
+                                    logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data })
+                                    process_queue(ws, {
+                                    'group_id': data.group_id,
+                                    'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
+                                    'user_id': data.user_id,
+                                    })
+                                }
+                            }
+                        }
+                    }
+                
+                
+                
+                }
                 else if (msg_data.data.text.trim().startsWith('反推') && reply_msg) {
                     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
-                    console.log('获取到信息！！', promise_data)
+                    logDebug('reply target fetched', promise_data)
                     if (promise_data.data?.message) {
                         for (const msg of promise_data.data.message) {
                             if (msg.type === 'image') {
                                 if (msg.data?.url) {
-                                    console.log('开始获取图像信息')
-                                    const img_info = await get_discrption_from_img(msg.data.url)
+                                    logInfo('start image description', { url: msg.data.url })
+                                    const img_info = await get_discrption_from_img(msg.data.url, msg_data.data.text)
                                     sendGroupMsg(ws, data.group_id,img_info,data.user_id)
                                 }
                             }
@@ -250,5 +302,6 @@ ws.on("message", async (raw_data)=>{
         }
         
     }
+    } catch (err) {logError(err)}
     }
 })

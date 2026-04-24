@@ -4,7 +4,8 @@ import OpenAI from "openai";
 import {mkdir, writeFile} from "node:fs/promises"
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
+import 'dotenv/config'
+const DEBUG = process.env.DEBUG === '1'
 const apiKey = process.env.OPENAI_API_KEY;
 const client = new OpenAI(
     {
@@ -27,6 +28,20 @@ const SIZE = process.env.IMAGE_SIZE || "auto";
 const QUALITY = process.env.IMAGE_QUALITY || "high";
 const FORMAT = (process.env.IMAGE_FORMAT || "png").toLowerCase();
 const BACKGROUND = process.env.IMAGE_BACKGROUND || "opaque";
+
+function logInfo(...args) {
+    console.log('[image]', ...args)
+}
+
+function logError(...args) {
+    console.error('[image]', ...args)
+}
+
+function logDebug(...args) {
+    if (DEBUG) {
+        console.log('[image:debug]', ...args)
+    }
+}
 
 function normalizeBase64(value) {
     return value.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "").trim();
@@ -173,11 +188,12 @@ async function requestImageGeneration(prompt) {
 
 
 export async function gen_img(prompt) {
-    console.log("base_url:", BASE_URL);
-    console.log("responses_model:", RESPONSES_MODEL);
-    console.log("image_model:", IMAGE_MODEL);
-    // return '/Users/Regenin/Code/oai_playground/output/generated-1776942198610.png'
-    // console.log("prompt:", PROMPT);
+    logInfo('generate image', {
+        base_url: BASE_URL,
+        responses_model: RESPONSES_MODEL,
+        image_model: IMAGE_MODEL,
+        prompt,
+    })
     const imageBase64 = await requestImageGeneration(prompt);
     if (!imageBase64) {
         return "[ERROR]:No final image returned from /v1/responses.";
@@ -186,12 +202,12 @@ export async function gen_img(prompt) {
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, Buffer.from(normalizeBase64(imageBase64), "base64"));
 
-    console.log("saved:", outputPath);
+    logInfo('image saved', outputPath);
     return outputPath
 }
 
 
-export async function get_discrption_from_img(img_url) {
+export async function get_discrption_from_img(img_url, user_msg, img_edit=false) {
     // return 'testtesttesttesttest'
     const stream = await client.responses.create({
     model: "gpt-5.4",
@@ -200,7 +216,7 @@ export async function get_discrption_from_img(img_url) {
         {
         role: "user",
         content: [
-            { type: "input_text", text: "请你为这张图片生成适合 gpt image 2的描述，**只**生成描述,不要加其他东西" },
+            { type: "input_text", text: img_edit?`请你为这张图片生成适合 gpt image 2的描述，**只**生成描述,不要加其他东西\r\n用户消息：${user_msg}`:`请你为这张图片生成适合 gpt image 2的描述，**只**生成描述,不要加其他东西\r\n用户消息：${user_msg}\r\n注意不是图像编辑，你要重新从 0 开始描述反推这张图片的提示词` },
             {
             type: "input_image",
             image_url: img_url
@@ -214,7 +230,7 @@ export async function get_discrption_from_img(img_url) {
     for await (const res_chunk of stream) {
         if (res_chunk.type === "response.output_text.delta") {
             text += res_chunk.delta
-            console.log(text)
+            logDebug('description stream', text)
 
         }
     }
@@ -224,10 +240,12 @@ export async function get_discrption_from_img(img_url) {
 
 
 async function main() {
-    console.log("base_url:", BASE_URL);
-    console.log("responses_model:", RESPONSES_MODEL);
-    console.log("image_model:", IMAGE_MODEL);
-    console.log("prompt:", PROMPT);
+    logInfo('cli generate image', {
+        base_url: BASE_URL,
+        responses_model: RESPONSES_MODEL,
+        image_model: IMAGE_MODEL,
+        prompt: PROMPT,
+    })
 
     const imageBase64 = await requestImageGeneration();
 
@@ -239,8 +257,8 @@ async function main() {
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, Buffer.from(normalizeBase64(imageBase64), "base64"));
 
-    console.log("saved:", outputPath);
+    logInfo('image saved', outputPath);
 }
 
 const isMain = process.argv[0] && import.meta.url === pathToFileURL(process.argv[0]).href
-if (isMain){main().catch((err)=>console.log(err))}
+if (isMain){main().catch((err)=>logError(err))}
