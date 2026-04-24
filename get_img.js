@@ -241,7 +241,7 @@ export async function get_discrption_from_img(img_url, user_msg, img_edit=false)
 
 
 export async function chat_with_content(img_url=null, text_info=null, user_msg) {
-    // return 'testtesttesttesttest'
+    // return 111
     const stream = await client.responses.create({
     model: "gpt-5.4",
     stream: true,

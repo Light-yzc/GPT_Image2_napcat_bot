@@ -297,49 +297,49 @@ ws.on("message", async (raw_data)=>{
                 })
                 }
 
-                else if (msg_data.data.text.trim().startsWith('Chat' && reply_msg)) {
-                    const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
-                    logDebug('gen chat msg', promise_data)
-                    if (promise_data.data?.message) {
-                        for (const msg of promise_data.data.message) {
-                            if (msg.type === 'image') {
-                                if (msg.data?.url) {
-                                    const chat_return = await chat_with_content(msg.data.url, null, msg_data.data.text)
-                                    sendGroupMsg(ws, data.group_id, chat_return, data.user_id)
+            else if (msg_data.data.text.trim().startsWith('Chat')&& reply_msg) {
+                const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
+                logDebug('gen chat msg', promise_data)
+                if (promise_data.data?.message) {
+                    for (const msg of promise_data.data.message) {
+                        if (msg.type === 'image') {
+                            if (msg.data?.url) {
+                                const chat_return = await chat_with_content(msg.data.url, null, msg_data.data.text)
+                                sendGroupMsg(ws, data.group_id, chat_return, data.user_id)
 
-                                }
-                            }
-                            if (msg.type === 'text') {
-                                if (msg.data?.text) {
-                                    const chat_return = await chat_with_content(null, msg.data.text, msg_data.data.text)
-                                    sendGroupMsg(ws, data.group_id, chat_return, data.user_id)
-
-                                }
                             }
                         }
-                    }
+                        if (msg.type === 'text') {
+                            if (msg.data?.text) {
+                                const chat_return = await chat_with_content(null, msg.data.text, msg_data.data.text)
+                                sendGroupMsg(ws, data.group_id, chat_return, data.user_id)
 
-                }
-
-
-                else if (msg_data.data.text.trim().startsWith('反推') && reply_msg) {
-                    const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
-                    logDebug('reply target fetched', promise_data)
-                    if (promise_data.data?.message) {
-                        for (const msg of promise_data.data.message) {
-                            if (msg.type === 'image') {
-                                if (msg.data?.url) {
-                                    logInfo('start image description', { url: msg.data.url })
-                                    const img_info = await get_discrption_from_img(msg.data.url, msg_data.data.text)
-                                    sendGroupMsg(ws, data.group_id,img_info,data.user_id)
-                                }
                             }
                         }
                     }
                 }
 
             }
+
+
+            else if (msg_data.data.text.trim().startsWith('反推') && reply_msg) {
+                const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
+                logDebug('reply target fetched', promise_data)
+                if (promise_data.data?.message) {
+                    for (const msg of promise_data.data.message) {
+                        if (msg.type === 'image') {
+                            if (msg.data?.url) {
+                                logInfo('start image description', { url: msg.data.url })
+                                const img_info = await get_discrption_from_img(msg.data.url, msg_data.data.text)
+                                sendGroupMsg(ws, data.group_id,img_info,data.user_id)
+                            }
+                        }
+                    }
+                }
+            }
+
         }
+    }
         
     }
     } catch (err) {logError(err)}
