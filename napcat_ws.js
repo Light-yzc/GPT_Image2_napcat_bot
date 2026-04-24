@@ -245,21 +245,8 @@ ws.on("message", async (raw_data)=>{
             }
 
 
-            if (msg_data.data.text.trim() != ''){
-                if(msg_data.data.text.trim().startsWith('生图') && at_me)
-                {
-                // const chunked_data = msg_data.data.text.slice(5)
-                const chunked_data = msg_data.data.text
-                logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data })
-                process_queue(ws, {
-                        'group_id': data.group_id,
-                        'data': chunked_data,
-                        'user_id': data.user_id,
-                })
-                }
 
-
-                else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
+            else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
                     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
                     logDebug('reply target fetched', promise_data)
                     if (promise_data.data?.message) {
@@ -278,10 +265,23 @@ ws.on("message", async (raw_data)=>{
                             }
                         }
                     }
-                
-                
-                
                 }
+
+
+            if (msg_data.data.text.trim() != ''){
+                if(msg_data.data.text.trim().startsWith('生图') && at_me)
+                {
+                // const chunked_data = msg_data.data.text.slice(5)
+                const chunked_data = msg_data.data.text
+                logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data })
+                process_queue(ws, {
+                        'group_id': data.group_id,
+                        'data': chunked_data,
+                        'user_id': data.user_id,
+                })
+                }
+
+
                 else if (msg_data.data.text.trim().startsWith('反推') && reply_msg) {
                     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
                     logDebug('reply target fetched', promise_data)
