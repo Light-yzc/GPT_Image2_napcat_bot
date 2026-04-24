@@ -1,5 +1,5 @@
 import WebSocket from "ws"
-import { gen_img, get_discrption_from_img } from "./get_img.js"
+import { chat_with_content, gen_img, get_discrption_from_img } from "./get_img.js"
 const token = 'yzcqwer'
 const WHITELIST = JSON.parse(process.env.WHITELIST || '[]')
 let self_qq_id = -999
@@ -54,11 +54,26 @@ class user_queue{
 function sendGroupMsg(ws, groupId, message, user_id = 'none', echo = 'send_group_msg', use_forward=false) {
     logDebug('send group message', { groupId, user_id, echo, use_forward })
     if (!use_forward){
+        const content = []
+
         ws.send(JSON.stringify({
             action: 'send_group_msg',
             params: {
             group_id: groupId,
-            message: message
+            message: [
+                user_id?{
+                    type: 'at',
+                    data: {
+                        qq: String(user_id)
+                    }
+                }:[],
+                {
+                    type: 'text',
+                    data: {
+                        'text': message
+                    }
+                }
+            ]
             },
             echo
     }))
@@ -173,7 +188,7 @@ ws.on('open', () => {
 let generation = false
 function process_queue(ws, task) {
     const queue_res = userQueue.mypush(task)
-    sendGroupMsg(ws, task.group_id, queue_res)
+    sendGroupMsg(ws, task.group_id, queue_res, task.user_id)
     if (!generation){
         processQueue(ws)
     }
@@ -227,7 +242,7 @@ ws.on("message", async (raw_data)=>{
     logDebug('message in whitelist group', { groupId: data.group_id })
 
     try {
-            for (const msg_data of data.message) {
+        for (const msg_data of data.message) {
         //handle img gen
         if (msg_data.type === 'at') {
             if (String(msg_data.data.qq) === String(self_qq_id)) at_me = true
@@ -280,6 +295,29 @@ ws.on("message", async (raw_data)=>{
                         'data': chunked_data,
                         'user_id': data.user_id,
                 })
+                }
+
+                else if (msg_data.data.text.trim().startsWith('Chat' && reply_msg)) {
+                    const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
+                    if (promise_data.data?.message) {
+                        for (const msg of promise_data.data.message) {
+                            if (msg.type === 'image') {
+                                if (msg.data?.url) {
+                                    const chat_return = await chat_with_content(msg.data.url, null, msg_data.data.text)
+                                    sendGroupMsg(ws, data.group_id, chat_return, data.user_id)
+
+                                }
+                            }
+                            if (msg.type === 'text') {
+                                if (msg.data?.text) {
+                                    const chat_return = await chat_with_content(null, msg.data.text, msg_data.data.text)
+                                    sendGroupMsg(ws, data.group_id, chat_return, data.user_id)
+
+                                }
+                            }
+                        }
+                    }
+
                 }
 
 
