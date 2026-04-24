@@ -249,11 +249,11 @@ export async function chat_with_content(img_url=null, text_info=null, user_msg) 
         {
         role: "user",
         content: [
-            { type: "input_text", text: img_edit?`请你为这张图片生成适合 gpt image 2的描述，**只**生成描述,不要加其他东西\r\n用户消息：${user_msg}`:`请你为这张图片生成适合 gpt image 2的描述，**只**生成描述,不要加其他东西\r\n用户消息：${user_msg}\r\n注意不是图像编辑，你要重新从 0 开始描述反推这张图片的提示词` },
-            {
+            { type: "input_text", text: text_info?`${text_info}\r\n用户信息：${user_msg}`:user_msg},
+            img_url?{
             type: "input_image",
             image_url: img_url
-            }
+            }:{}
         ]
         }
     ]

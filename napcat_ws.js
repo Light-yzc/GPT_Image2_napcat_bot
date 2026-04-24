@@ -70,7 +70,7 @@ function sendGroupMsg(ws, groupId, message, user_id = 'none', echo = 'send_group
                 {
                     type: 'text',
                     data: {
-                        'text': message
+                        'text': `\r\n${message}`
                     }
                 }
             ]
@@ -299,6 +299,7 @@ ws.on("message", async (raw_data)=>{
 
                 else if (msg_data.data.text.trim().startsWith('Chat' && reply_msg)) {
                     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
+                    logDebug('gen chat msg', promise_data)
                     if (promise_data.data?.message) {
                         for (const msg of promise_data.data.message) {
                             if (msg.type === 'image') {
