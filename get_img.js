@@ -194,7 +194,7 @@ export async function gen_img(prompt) {
         image_model: IMAGE_MODEL,
         prompt,
     })
-    return '/Users/Regenin/Code/oai_playground/output/generated-1776952903666.png'
+    // return '/Users/Regenin/Code/oai_playground/output/generated-1776952903666.png'
     const imageBase64 = await requestImageGeneration(prompt);
     if (!imageBase64) {
         return "[ERROR]:No final image returned from /v1/responses.";
