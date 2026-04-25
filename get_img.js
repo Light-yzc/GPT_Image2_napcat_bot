@@ -108,7 +108,7 @@ function extractImageBase64(eventName, payload) {
     return "";
 }
 
-async function requestImageGeneration(prompt) {
+async function requestImageGeneration(prompt, resolution = 'auto') {
     const response = await fetch(`${BASE_URL}/responses`, {
         method: "POST",
         headers: {
@@ -127,7 +127,7 @@ async function requestImageGeneration(prompt) {
                 {
                     type: "image_generation",
                     model: IMAGE_MODEL,
-                    size: SIZE,
+                    size: resolution,
                     quality: QUALITY,
                     output_format: FORMAT,
                     background: BACKGROUND,
@@ -160,7 +160,7 @@ async function requestImageGeneration(prompt) {
         // console.log('///////////')
         // console.log(buffer)
         const chunks = buffer.split(/\r?\n\r?\n/);
-        // console.log(chunks)
+        console.log(chunks)
         buffer = chunks.pop() || "";
 
         for (const chunk of chunks) {
@@ -187,7 +187,7 @@ async function requestImageGeneration(prompt) {
 }
 
 
-export async function gen_img(prompt) {
+export async function gen_img(prompt, resolution = 'auto') {
     logInfo('generate image', {
         base_url: BASE_URL,
         responses_model: RESPONSES_MODEL,
@@ -195,7 +195,7 @@ export async function gen_img(prompt) {
         prompt,
     })
     // return '/Users/Regenin/Code/oai_playground/output/generated-1776952903666.png'
-    const imageBase64 = await requestImageGeneration(prompt);
+    const imageBase64 = await requestImageGeneration(prompt, resolution);
     if (!imageBase64) {
         return "[ERROR]:No final image returned from /v1/responses.";
     }
@@ -240,7 +240,7 @@ export async function get_discrption_from_img(img_url, user_msg, img_edit=false)
 }
 
 
-export async function chat_with_content(img_url=null, text_info=null, user_msg) {
+export async function chat_with_content(img_url=null, text_info=null, user_msg='') {
     // return 111
     const stream = await client.responses.create({
     model: "gpt-5.4",
@@ -250,10 +250,14 @@ export async function chat_with_content(img_url=null, text_info=null, user_msg) 
         role: "user",
         content: [
             { type: "input_text", text: text_info?`${text_info}\r\n用户信息：${user_msg}`:user_msg},
-            img_url?{
-            type: "input_image",
-            image_url: img_url
-            }:{}
+            // img_url?{
+            // type: "input_image",
+            // image_url: img_url
+            // }:
+            ...(img_url ? [{
+                type: "input_image",
+                image_url: img_url
+            }] : [])
         ]
         }
     ]
@@ -263,7 +267,7 @@ export async function chat_with_content(img_url=null, text_info=null, user_msg) 
     for await (const res_chunk of stream) {
         if (res_chunk.type === "response.output_text.delta") {
             text += res_chunk.delta
-            logDebug('description stream', text)
+            logDebug('chat stream', text)
 
         }
     }

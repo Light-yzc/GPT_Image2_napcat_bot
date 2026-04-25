@@ -202,8 +202,8 @@ async function processQueue(ws) {
         while (userQueue.queue.length > 0) {
             const task = userQueue.mypop()
             try{
-                logInfo('start image task', { groupId: task.group_id, userId: task.user_id, prompt: task.data })
-                const result = await gen_img(task.data)
+                logInfo('start image task', { groupId: task.group_id, userId: task.user_id, prompt: task.data,resolution: task.resolution })
+                const result = await gen_img(task.data, task.resolution)
                 send_group_img(ws, task.group_id, task.user_id, result, task.data)
                 logInfo('image task finished', { output: result })
             } catch (err) {
@@ -254,7 +254,7 @@ ws.on("message", async (raw_data)=>{
         }
         if (msg_data.type === 'text' && msg_data?.data?.text) {
             if (msg_data.data.text.includes('/help')){
-                const help_msg = 'bot使用方法\r\n1.@bot生图 开始生成图片\r\n2.引用图片 然后输入`反推` 进行图片提示词反推'
+                const help_msg = 'bot使用方法\r\n1.@bot生图 开始生成图片\r\n2.引用图片 然后输入`反推` 进行图片提示词反推\r\n生成 3k 图片需要加上 3K_H生成横向或者 3K_V竖向'
                 sendGroupMsg(ws, data.group_id, help_msg, data.user_id)
                 return
             }
@@ -262,6 +262,10 @@ ws.on("message", async (raw_data)=>{
 
 
             else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
+                    const trimed_msg_data = msg_data.data.text.trim()
+                    if (trimed_msg_data.includes('3K_V')) {const resolution = '1728x3072'}
+                    else if (trimed_msg_data.includes('3K_H')) {const resolution = '3072x1728'}
+                    else {const resolution = 'auto'}
                     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
                     logDebug('reply target fetched', promise_data)
                     if (promise_data.data?.message) {
@@ -270,11 +274,12 @@ ws.on("message", async (raw_data)=>{
                                 // console.log(JSON.stringify(msg))
                                 const forward_msg_data = msg.data?.text
                                 if (forward_msg_data) {
-                                    logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data })
+                                    logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data, resolution: resolution })
                                     process_queue(ws, {
                                     'group_id': data.group_id,
                                     'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
                                     'user_id': data.user_id,
+                                    'resolution': resolution
                                     })
                                     return
                                 }
@@ -288,12 +293,17 @@ ws.on("message", async (raw_data)=>{
                 if(msg_data.data.text.trim().startsWith('生图') && at_me)
                 {
                 // const chunked_data = msg_data.data.text.slice(5)
+                if (trimed_msg_data.includes('3K_V')) {const resolution = '1728x3072'}
+                else if (trimed_msg_data.includes('3K_H')) {const resolution = '3072x1728'}
+                else {const resolution = 'auto'}
                 const chunked_data = msg_data.data.text
-                logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data })
+                logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
                 process_queue(ws, {
                         'group_id': data.group_id,
                         'data': chunked_data,
                         'user_id': data.user_id,
+                        'resolution': resolution
+
                 })
                 }
 
