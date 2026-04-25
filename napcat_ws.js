@@ -223,6 +223,7 @@ ws.on("message", async (raw_data)=>{
     let reply_msg = false
     let cur_reply_msg_id = null
     let prev_text = ''
+    let resolution = ''
     const data = JSON.parse(raw_data)
     if (data?.status && data?.echo) {
         const pending = pendingMap.get(data.echo)
@@ -254,7 +255,7 @@ ws.on("message", async (raw_data)=>{
         }
         if (msg_data.type === 'text' && msg_data?.data?.text) {
             if (msg_data.data.text.includes('/help')){
-                const help_msg = 'bot使用方法\r\n1.@bot生图 开始生成图片\r\n2.引用图片 然后输入`反推` 进行图片提示词反推\r\n生成 3k 图片需要加上 3K_H生成横向或者 3K_V竖向'
+                const help_msg = 'bot使用方法\r\n1.@bot生图 开始生成图片\r\n2.引用图片 然后输入`反推` 进行图片提示词反推\r\n3.生成 3k 图片需要加上 3K_H生成横向或者 3K_V竖向'
                 sendGroupMsg(ws, data.group_id, help_msg, data.user_id)
                 return
             }
@@ -263,9 +264,9 @@ ws.on("message", async (raw_data)=>{
 
             else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
                     const trimed_msg_data = msg_data.data.text.trim()
-                    if (trimed_msg_data.includes('3K_V')) {const resolution = '1728x3072'}
-                    else if (trimed_msg_data.includes('3K_H')) {const resolution = '3072x1728'}
-                    else {const resolution = 'auto'}
+                    if (trimed_msg_data.toLowerCase().includes('3K_V')) resolution = '1728x3072'
+                    else if (trimed_msg_data.toLowerCase().includes('3K_H')) resolution = '3072x1728'
+                    else  resolution = 'auto'
                     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
                     logDebug('reply target fetched', promise_data)
                     if (promise_data.data?.message) {
@@ -293,9 +294,10 @@ ws.on("message", async (raw_data)=>{
                 if(msg_data.data.text.trim().startsWith('生图') && at_me)
                 {
                 // const chunked_data = msg_data.data.text.slice(5)
-                if (trimed_msg_data.includes('3K_V')) {const resolution = '1728x3072'}
-                else if (trimed_msg_data.includes('3K_H')) {const resolution = '3072x1728'}
-                else {const resolution = 'auto'}
+                const trimed_msg_data = msg_data.data.text.trim()
+                if (trimed_msg_data.toLowerCase().includes('3K_V'))  resolution = '1728x3072'
+                else if (trimed_msg_data.toLowerCase().includes('3K_H'))  resolution = '3072x1728'
+                else  resolution = 'auto'
                 const chunked_data = msg_data.data.text
                 logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
                 process_queue(ws, {
