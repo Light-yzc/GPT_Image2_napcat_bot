@@ -160,7 +160,7 @@ async function requestImageGeneration(prompt, resolution = 'auto') {
         // console.log('///////////')
         // console.log(buffer)
         const chunks = buffer.split(/\r?\n\r?\n/);
-        console.log(chunks)
+        // console.log(chunks)
         buffer = chunks.pop() || "";
 
         for (const chunk of chunks) {

@@ -264,8 +264,9 @@ ws.on("message", async (raw_data)=>{
 
             else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
                     const trimed_msg_data = msg_data.data.text.trim()
-                    if (trimed_msg_data.toLowerCase().includes('3K_V')) resolution = '1728x3072'
-                    else if (trimed_msg_data.toLowerCase().includes('3K_H')) resolution = '3072x1728'
+                    const lower_msg_data = trimed_msg_data.toLowerCase()
+                    if (lower_msg_data.includes('3k_v')) resolution = '1728x3072'
+                    else if (lower_msg_data.includes('3k_h')) resolution = '3072x1728'
                     else  resolution = 'auto'
                     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
                     logDebug('reply target fetched', promise_data)
@@ -295,8 +296,9 @@ ws.on("message", async (raw_data)=>{
                 {
                 // const chunked_data = msg_data.data.text.slice(5)
                 const trimed_msg_data = msg_data.data.text.trim()
-                if (trimed_msg_data.toLowerCase().includes('3K_V'))  resolution = '1728x3072'
-                else if (trimed_msg_data.toLowerCase().includes('3K_H'))  resolution = '3072x1728'
+                const lower_msg_data = trimed_msg_data.toLowerCase()
+                if (lower_msg_data.includes('3k_v'))  resolution = '1728x3072'
+                else if (lower_msg_data.includes('3k_h'))  resolution = '3072x1728'
                 else  resolution = 'auto'
                 const chunked_data = msg_data.data.text
                 logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
