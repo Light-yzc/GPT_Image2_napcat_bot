@@ -177,8 +177,8 @@ async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img
         }
 
         buffer += decoder.decode(value, { stream: true });
-        // console.log('///////////')
-        // console.log(buffer)
+        console.log('///////////')
+        console.log(buffer)
         const chunks = buffer.split(/\r?\n\r?\n/);
         console.log(chunks)
         buffer = chunks.pop() || "";

@@ -30,6 +30,17 @@ function logDebug(...args) {
     }
 }
 
+function formatTaskError(err, maxLength = 220) {
+    const rawMessage = err?.message || String(err || '未知错误')
+    const compactMessage = rawMessage.replace(/\s+/g, ' ').trim()
+
+    if (compactMessage.length <= maxLength) {
+        return compactMessage
+    }
+
+    return `${compactMessage.slice(0, maxLength)}...`
+}
+
 class user_queue{
     constructor(maxsize=5){
         this.queue = []
@@ -209,6 +220,12 @@ async function processQueue(ws) {
                 logInfo('image task finished', { output: result })
             } catch (err) {
                  logError('image task failed', err)
+                 sendGroupMsg(
+                    ws,
+                    task.group_id,
+                    `生图失败了喵：${formatTaskError(err)}`,
+                    task.user_id,
+                 )
             } 
         }
     } catch(err) {
@@ -340,32 +357,6 @@ ws.on("message", async (raw_data)=>{
 
             else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
                     put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, true, false)
-
-                //     const trimed_msg_data = msg_data.data.text.trim()
-                //     const lower_msg_data = trimed_msg_data.toLowerCase()
-                //     if (lower_msg_data.includes('3k_v')) resolution = '1728x3072'
-                //     else if (lower_msg_data.includes('3k_h')) resolution = '3072x1728'
-                //     else  resolution = 'auto'
-                //     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
-                //     logDebug('reply target fetched', promise_data)
-                //     if (promise_data.data?.message) {
-                //         for (const msg of promise_data.data.message) {
-                //             if (msg.type === 'text') {
-                //                 // console.log(JSON.stringify(msg))
-                //                 const forward_msg_data = msg.data?.text
-                //                 if (forward_msg_data) {
-                //                     logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data, resolution: resolution })
-                //                     process_queue(ws, {
-                //                     'group_id': data.group_id,
-                //                     'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
-                //                     'user_id': data.user_id,
-                //                     'resolution': resolution
-                //                     })
-                //                     return
-                //                 }
-                //             }
-                //         }
-                //     }
                 }
 
 
@@ -380,21 +371,6 @@ ws.on("message", async (raw_data)=>{
                 if(msg_data.data.text.trim().startsWith('生图') && at_me)
                 {
                         put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, false, false)
-                // const chunked_data = msg_data.data.text.slice(5)
-                // const trimed_msg_data = msg_data.data.text.trim()
-                // const lower_msg_data = trimed_msg_data.toLowerCase()
-                // if (lower_msg_data.includes('3k_v'))  resolution = '1728x3072'
-                // else if (lower_msg_data.includes('3k_h'))  resolution = '3072x1728'
-                // else  resolution = 'auto'
-                // const chunked_data = msg_data.data.text
-                // logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
-                // process_queue(ws, {
-                //         'group_id': data.group_id,
-                //         'data': chunked_data,
-                //         'user_id': data.user_id,
-                //         'resolution': resolution
-
-                // })
                 }
 
 
