@@ -1,5 +1,6 @@
 import WebSocket from "ws"
 import { chat_with_content, gen_img, get_discrption_from_img } from "./get_img.js"
+import { log } from "node:console"
 const token = 'yzcqwer'
 const WHITELIST = JSON.parse(process.env.WHITELIST || '[]')
 let self_qq_id = -999
@@ -203,7 +204,7 @@ async function processQueue(ws) {
             const task = userQueue.mypop()
             try{
                 logInfo('start image task', { groupId: task.group_id, userId: task.user_id, prompt: task.data,resolution: task.resolution })
-                const result = await gen_img(task.data, task.resolution)
+                const result = await gen_img(task.data, task.resolution, task.edit, task.img_url)
                 send_group_img(ws, task.group_id, task.user_id, result, task.data)
                 logInfo('image task finished', { output: result })
             } catch (err) {
@@ -215,6 +216,65 @@ async function processQueue(ws) {
     } finally {
         generation = false
     }
+}
+
+
+async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg = false, edit_msg = false) {
+    const trimed_msg_data = msg_data.data.text.trim()
+    const lower_msg_data = trimed_msg_data.toLowerCase()
+    let resolution = ''
+    if (lower_msg_data.includes('3k_v')) resolution = '1728x3072'
+    else if (lower_msg_data.includes('3k_h')) resolution = '3072x1728'
+    else  resolution = 'auto'
+    
+    if (reply_msg) {
+        const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
+        logDebug('reply target fetched', promise_data)
+        if (promise_data.data?.message) {
+            for (const msg of promise_data.data.message) {
+                if (msg.type === 'text' && edit_msg === false) {
+                    // console.log(JSON.stringify(msg))
+                    const forward_msg_data = msg.data?.text
+                    if (forward_msg_data) {
+                        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data, resolution: resolution })
+                        process_queue(ws, {
+                        'group_id': data.group_id,
+                        'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
+                        'user_id': data.user_id,
+                        'resolution': resolution,
+                        'edit': false
+                        })
+                        return
+                    }
+                }
+                else if (msg.type === 'image' && edit_msg === true) {
+                    const img_url = msg.data.url
+                    logInfo('edit image', { groupId: data.group_id, userId: data.user_id, resolution: resolution })
+                    process_queue(ws, {
+                    'group_id': data.group_id,
+                    'data': `${msg_data.data.text}`,
+                    'user_id': data.user_id,
+                    'resolution': resolution,
+                    'edit': true,
+                    'img_url': img_url
+                    })
+                }
+            }
+        }
+    }
+    else {
+        const chunked_data = msg_data.data.text
+        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
+        process_queue(ws, {
+                'group_id': data.group_id,
+                'data': chunked_data,
+                'user_id': data.user_id,
+                'resolution': resolution,
+                'edit': false
+
+        })
+    }
+
 }
 
 ws.on("message", async (raw_data)=>{
@@ -255,7 +315,23 @@ ws.on("message", async (raw_data)=>{
         }
         if (msg_data.type === 'text' && msg_data?.data?.text) {
             if (msg_data.data.text.includes('/help')){
-                const help_msg = 'bot使用方法\r\n1.@bot生图 开始生成图片\r\n2.引用图片 然后输入`反推` 进行图片提示词反推\r\n3.生成 3k 图片需要加上 3K_H生成横向或者 3K_V竖向'
+                const help_msg = [
+                    'bot 使用方法',
+                    '1. @bot 生图 + 提示词：直接生成图片',
+                    '2. 回复一条文本再发 生图：基于被回复内容继续补充提示词生图',
+                    '3. 回复一张图片再发 改图 + 要求：按你的要求做图生图',
+                    '4. 回复一张图片再发 反推：反推这张图的提示词',
+                    '5. 回复文本或图片再发 Chat + 问题：结合被回复内容继续对话',
+                    '6. 需要 3K 图时，在命令里加 3K_H 或 3K_V',
+                    '7. 发送 /help 可再次查看本帮助',
+                    '',
+                    '示例：',
+                    '@bot 生图 赛博朋克猫娘 3K_V',
+                    '回复一段提示词后发送：生图 加一点雨夜霓虹感',
+                    '回复一张图后发送：改图 改成吉卜力风格',
+                    '回复一张图后发送：反推',
+                    '回复一张图后发送：Chat 这张图哪里还能优化？',
+                ].join('\r\n')
                 sendGroupMsg(ws, data.group_id, help_msg, data.user_id)
                 return
             }
@@ -263,55 +339,67 @@ ws.on("message", async (raw_data)=>{
 
 
             else if (msg_data.data.text.trim().startsWith('生图') && reply_msg) {
-                    const trimed_msg_data = msg_data.data.text.trim()
-                    const lower_msg_data = trimed_msg_data.toLowerCase()
-                    if (lower_msg_data.includes('3k_v')) resolution = '1728x3072'
-                    else if (lower_msg_data.includes('3k_h')) resolution = '3072x1728'
-                    else  resolution = 'auto'
-                    const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
-                    logDebug('reply target fetched', promise_data)
-                    if (promise_data.data?.message) {
-                        for (const msg of promise_data.data.message) {
-                            if (msg.type === 'text') {
-                                // console.log(JSON.stringify(msg))
-                                const forward_msg_data = msg.data?.text
-                                if (forward_msg_data) {
-                                    logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data, resolution: resolution })
-                                    process_queue(ws, {
-                                    'group_id': data.group_id,
-                                    'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
-                                    'user_id': data.user_id,
-                                    'resolution': resolution
-                                    })
-                                    return
-                                }
-                            }
-                        }
-                    }
+                    put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, true, false)
+
+                //     const trimed_msg_data = msg_data.data.text.trim()
+                //     const lower_msg_data = trimed_msg_data.toLowerCase()
+                //     if (lower_msg_data.includes('3k_v')) resolution = '1728x3072'
+                //     else if (lower_msg_data.includes('3k_h')) resolution = '3072x1728'
+                //     else  resolution = 'auto'
+                //     const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
+                //     logDebug('reply target fetched', promise_data)
+                //     if (promise_data.data?.message) {
+                //         for (const msg of promise_data.data.message) {
+                //             if (msg.type === 'text') {
+                //                 // console.log(JSON.stringify(msg))
+                //                 const forward_msg_data = msg.data?.text
+                //                 if (forward_msg_data) {
+                //                     logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data, resolution: resolution })
+                //                     process_queue(ws, {
+                //                     'group_id': data.group_id,
+                //                     'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
+                //                     'user_id': data.user_id,
+                //                     'resolution': resolution
+                //                     })
+                //                     return
+                //                 }
+                //             }
+                //         }
+                //     }
                 }
+
+
+
+            else if (msg_data.data.text.trim().startsWith('改图') && reply_msg) {
+                put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, true, true)
+            } 
+
 
 
             if (msg_data.data.text.trim() != ''){
                 if(msg_data.data.text.trim().startsWith('生图') && at_me)
                 {
+                        put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, false, false)
                 // const chunked_data = msg_data.data.text.slice(5)
-                const trimed_msg_data = msg_data.data.text.trim()
-                const lower_msg_data = trimed_msg_data.toLowerCase()
-                if (lower_msg_data.includes('3k_v'))  resolution = '1728x3072'
-                else if (lower_msg_data.includes('3k_h'))  resolution = '3072x1728'
-                else  resolution = 'auto'
-                const chunked_data = msg_data.data.text
-                logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
-                process_queue(ws, {
-                        'group_id': data.group_id,
-                        'data': chunked_data,
-                        'user_id': data.user_id,
-                        'resolution': resolution
+                // const trimed_msg_data = msg_data.data.text.trim()
+                // const lower_msg_data = trimed_msg_data.toLowerCase()
+                // if (lower_msg_data.includes('3k_v'))  resolution = '1728x3072'
+                // else if (lower_msg_data.includes('3k_h'))  resolution = '3072x1728'
+                // else  resolution = 'auto'
+                // const chunked_data = msg_data.data.text
+                // logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
+                // process_queue(ws, {
+                //         'group_id': data.group_id,
+                //         'data': chunked_data,
+                //         'user_id': data.user_id,
+                //         'resolution': resolution
 
-                })
+                // })
                 }
 
-            else if (msg_data.data.text.trim().startsWith('Chat')&& reply_msg) {
+
+
+            else if (msg_data.data.text.trim().toLowerCase().startsWith('chat')&& reply_msg) {
                 const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
                 logDebug('gen chat msg', promise_data)
                 if (promise_data.data?.message) {

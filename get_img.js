@@ -5,6 +5,8 @@ import {mkdir, writeFile} from "node:fs/promises"
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import 'dotenv/config'
+import { text } from "node:stream/consumers";
+import { type } from "node:os";
 const DEBUG = process.env.DEBUG === '1'
 const apiKey = process.env.OPENAI_API_KEY;
 const client = new OpenAI(
@@ -108,7 +110,24 @@ function extractImageBase64(eventName, payload) {
     return "";
 }
 
-async function requestImageGeneration(prompt, resolution = 'auto') {
+async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img_url) {
+    let input_msg = ''
+    img_edit ? input_msg = [
+        {
+            type: 'message', 
+            role: 'user',
+            content: [
+                {type: 'input_text',
+                 text: prompt
+                },
+                {type: 'input_image',
+                 image_url: img_url
+                }
+            ]
+        }
+    ] : prompt
+
+
     const response = await fetch(`${BASE_URL}/responses`, {
         method: "POST",
         headers: {
@@ -118,7 +137,7 @@ async function requestImageGeneration(prompt, resolution = 'auto') {
         },
         body: JSON.stringify({
             model: RESPONSES_MODEL,
-            input: prompt,
+            input: input_msg,
             stream: true,
             tool_choice: {
                 type: "image_generation",
@@ -127,6 +146,7 @@ async function requestImageGeneration(prompt, resolution = 'auto') {
                 {
                     type: "image_generation",
                     model: IMAGE_MODEL,
+                    action: img_edit ? 'edit' : 'generate',
                     size: resolution,
                     quality: QUALITY,
                     output_format: FORMAT,
@@ -160,7 +180,7 @@ async function requestImageGeneration(prompt, resolution = 'auto') {
         // console.log('///////////')
         // console.log(buffer)
         const chunks = buffer.split(/\r?\n\r?\n/);
-        // console.log(chunks)
+        console.log(chunks)
         buffer = chunks.pop() || "";
 
         for (const chunk of chunks) {
@@ -187,7 +207,7 @@ async function requestImageGeneration(prompt, resolution = 'auto') {
 }
 
 
-export async function gen_img(prompt, resolution = 'auto') {
+export async function gen_img(prompt, resolution = 'auto', img_edit=false, img_url='') {
     logInfo('generate image', {
         base_url: BASE_URL,
         responses_model: RESPONSES_MODEL,
@@ -195,7 +215,7 @@ export async function gen_img(prompt, resolution = 'auto') {
         prompt,
     })
     // return '/Users/Regenin/Code/oai_playground/output/generated-1776952903666.png'
-    const imageBase64 = await requestImageGeneration(prompt, resolution);
+    const imageBase64 = await requestImageGeneration(prompt, resolution, img_edit=img_edit, img_url=img_url);
     if (!imageBase64) {
         return "[ERROR]:No final image returned from /v1/responses.";
     }
