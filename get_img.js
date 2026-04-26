@@ -1,17 +1,14 @@
-// const { mkdir, writeFile } = require("node:fs/promises");
-// const { dirname, resolve } = require("node:path");
 import OpenAI from "openai";
 import {mkdir, writeFile} from "node:fs/promises"
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import 'dotenv/config'
-import { text } from "node:stream/consumers";
-import { type } from "node:os";
 const DEBUG = process.env.DEBUG === '1'
 const apiKey = process.env.OPENAI_API_KEY;
+const BASE_URL = (process.env.OPENAI_BASE_URL || "http://127.0.0.1:8317/v1").replace(/\/+$/, "");
 const client = new OpenAI(
     {
-        baseURL: "http://127.0.0.1:8317/v1",
+        baseURL: BASE_URL,
         apiKey: apiKey
     } 
 )
@@ -21,15 +18,15 @@ if (!apiKey) {
     throw new Error("Missing OPENAI_API_KEY.");
 }
 
-const BASE_URL = (process.env.OPENAI_BASE_URL || "http://127.0.0.1:8317/v1").replace(/\/+$/, "");
 const RESPONSES_MODEL = process.env.RESPONSES_MODEL || "gpt-5.4";
-const IMAGE_MODEL = "gpt-image-2";
-let PROMPT = process.argv.slice(2).join(" ").trim() || "Generate a clean product shot of a glass honey jar on a light background.";
-PROMPT = '架空のアニメ映画のポスターをGPT image2で作成。'
-const SIZE = process.env.IMAGE_SIZE || "auto";
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gpt-image-2";
+const DEFAULT_PROMPT = process.env.DEFAULT_PROMPT || "Generate a clean product shot of a glass honey jar on a light background.";
+let PROMPT = process.argv.slice(2).join(" ").trim() || DEFAULT_PROMPT;
 const QUALITY = process.env.IMAGE_QUALITY || "high";
 const FORMAT = (process.env.IMAGE_FORMAT || "png").toLowerCase();
 const BACKGROUND = process.env.IMAGE_BACKGROUND || "opaque";
+const MODERATION = process.env.IMAGE_MODERATION || "low";
+const OUTPUT_DIR = process.env.OUTPUT_DIR || "output";
 
 function logInfo(...args) {
     console.log('[image]', ...args)
@@ -129,21 +126,26 @@ function extractSseErrorMessage(eventName, payload) {
 }
 
 async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img_url) {
-    let input_msg = ''
-    img_edit ? input_msg = [
-        {
-            type: 'message', 
-            role: 'user',
-            content: [
-                {type: 'input_text',
-                 text: prompt
-                },
-                {type: 'input_image',
-                 image_url: img_url
-                }
-            ]
-        }
-    ] : input_msg = prompt
+    let input_msg = prompt
+
+    if (img_edit) {
+        input_msg = [
+            {
+                type: 'message', 
+                role: 'user',
+                content: [
+                    {
+                        type: 'input_text',
+                        text: prompt
+                    },
+                    {
+                        type: 'input_image',
+                        image_url: img_url
+                    }
+                ]
+            }
+        ]
+    }
     const response = await fetch(`${BASE_URL}/responses`, {
         method: "POST",
         headers: {
@@ -167,6 +169,7 @@ async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img
                     quality: QUALITY,
                     output_format: FORMAT,
                     background: BACKGROUND,
+                    moderation: MODERATION
                 },
             ],
         }),
@@ -193,10 +196,8 @@ async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img
         }
 
         buffer += decoder.decode(value, { stream: true });
-        // console.log('///////////')
-        // console.log(buffer)
         const chunks = buffer.split(/\r?\n\r?\n/);
-        console.log(chunks)
+        logDebug('raw image sse chunks', chunks)
         buffer = chunks.pop() || "";
 
         for (const chunk of chunks) {
@@ -241,7 +242,7 @@ export async function gen_img(prompt, resolution = 'auto', img_edit=false, img_u
     if (!imageBase64) {
         throw new Error("No final image returned from /v1/responses.");
     }
-    const outputPath = resolve("output", `generated-${Date.now()}.${FORMAT}`);
+    const outputPath = resolve(OUTPUT_DIR, `generated-${Date.now()}.${FORMAT}`);
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, Buffer.from(normalizeBase64(imageBase64), "base64"));
 
@@ -332,7 +333,7 @@ async function main() {
         throw new Error("No final image returned from /v1/responses.");
     }
 
-    const outputPath = resolve("output", `generated-${Date.now()}.${FORMAT}`);
+    const outputPath = resolve(OUTPUT_DIR, `generated-${Date.now()}.${FORMAT}`);
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, Buffer.from(normalizeBase64(imageBase64), "base64"));
 

@@ -1,194 +1,323 @@
 # GPT Image2 NapCat Bot
 
-一个基于 `NapCat WebSocket + OpenAI SDK + CLIProxyAPI` 的 QQ 群机器人。
+一个基于 `NapCat WebSocket + CLIProxyAPI + OpenAI SDK` 的 QQ 群机器人。
 
-当前支持两类能力：
+当前支持：
 
 - `@机器人 生图 ...`
-  使用 `gpt-5.4 + gpt-image-2` 生成图片
-- 回复一张图片并发送 `反推 ...`
-  读取被回复图片，反推成适合 `gpt-image-2` 的提示词
+- 回复文本后 `生图 ...`
+- 回复图片后 `改图 ...`
+- 回复图片后 `反推`
+- 回复文本或图片后 `Chat ...`
+- `3K_H / 3K_V` 尺寸标记
 
-## 工作方式
+## 架构
 
-项目由两个核心脚本组成：
+运行链路是：
+
+1. `NapCat-Docker` 提供 QQ 登录和 WebSocket Server
+2. 本项目通过 WebSocket 接 NapCat
+3. 本项目通过 `CLIProxyAPI` 的 OpenAI 兼容接口访问 `responses`
+4. 生成图片先落盘到本地 `output/`
+5. NapCat 容器通过挂载目录读取图片文件并回发到群里
+
+## 项目文件
 
 - [napcat_ws.js](./napcat_ws.js)
-  连接 NapCat WebSocket，监听群消息、解析命令、排队执行任务、回发结果
+  负责连接 NapCat WebSocket、解析命令、排队、回消息
 - [get_img.js](./get_img.js)
-  调用 OpenAI / CLIProxyAPI：
-  - 生图
-  - 识图 / 反推提示词
+  负责文本生图、图生图、反推、Chat
+- [.env.example](./.env.example)
+  环境变量模板
 
 ## 依赖
 
 - Node.js 20+
-- 一个可用的 NapCat WebSocket 服务
-- 一个可用的 `OPENAI_API_KEY`
-- 当前默认通过 `CLIProxyAPI` 转发到：
-  - `http://127.0.0.1:8317/v1`
+- Docker / Docker Compose
+- 一个可用的 QQ 账号
+- 一个可用的 CLIProxyAPI 实例
 
-## 安装
+## 1. 部署 NapCat-Docker
+
+参考仓库：
+
+- NapCat-Docker: https://github.com/NapNeko/NapCat-Docker
+
+NapCat-Docker 官方 README 给出的默认端口包括 `3001`（WebSocket）和 `6099`（WebUI），并说明可持久化这些目录：
+
+- `/app/.config/QQ`
+- `/app/napcat/config`
+- `/app/napcat/plugins`
+
+本项目还需要额外挂载一个图片输出目录，给 NapCat 读取生成后的图片。
+
+可以直接用下面这份 `docker-compose.yml`：
+
+```yaml
+version: "3.8"
+
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: always
+    network_mode: bridge
+    environment:
+      - NAPCAT_UID=${NAPCAT_UID}
+      - NAPCAT_GID=${NAPCAT_GID}
+    ports:
+      - "3001:3001"
+      - "6099:6099"
+    volumes:
+      - ./napcat/QQ:/app/.config/QQ
+      - ./napcat/config:/app/napcat/config
+      - ./napcat/plugins:/app/napcat/plugins
+      - ./output:/app/shared-output
+```
+
+启动：
+
+```bash
+NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) docker compose up -d
+```
+
+查看日志和默认 token：
+
+```bash
+docker logs napcat
+```
+
+WebUI：
+
+```text
+http://<你的服务器IP>:6099/webui
+```
+
+说明：
+
+- `3001` 是本项目默认连接的 WebSocket 端口
+- `./output:/app/shared-output` 是关键挂载
+- 后面 `.env` 里的 `NAPCAT_MOUNT_OUTPUT_DIR` 必须和 `/app/shared-output` 保持一致
+
+## 2. 部署 CLIProxyAPI
+
+参考：
+
+- CLIProxyAPI GitHub: https://github.com/router-for-me/CLIProxyAPI
+- 基础配置文档: https://help.router-for.me/configuration/basic
+- OpenAI Compatibility 文档: https://help.router-for.me/configuration/provider/openai-compatibility
+
+本项目只要求：
+
+1. `CLIProxyAPI` 对外监听一个本地端口
+2. 该端口提供 OpenAI 兼容的 `/v1/responses`
+3. 你给这个机器人分配一个可调用的本地 API Key
+
+一个最小 `config.yaml` 示例：
+
+```yaml
+host: "127.0.0.1"
+port: 8317
+
+api-keys:
+  - "replace-with-your-local-client-key"
+
+debug: false
+request-retry: 1
+```
+
+如果你还要走 OpenAI-compatible provider，可以按官方文档继续补：
+
+```yaml
+openai-compatibility:
+  - name: "your-provider"
+    base-url: "https://provider.example.com/v1"
+    api-key-entries:
+      - api-key: "provider-key"
+    models:
+      - name: "upstream-model-name"
+        alias: "local-model-alias"
+```
+
+本项目默认会连：
+
+```text
+http://127.0.0.1:8317/v1
+```
+
+如果你改了 CLIProxyAPI 端口，就要同步改 `.env` 里的 `OPENAI_BASE_URL`。
+
+## 3. 配置本项目
+
+安装依赖：
 
 ```bash
 npm install
 ```
 
-## 环境变量
-
-请先复制一份 `.env.example`：
+复制环境变量模板：
 
 ```bash
 cp .env.example .env
 ```
 
-然后填写：
+示例：
 
 ```env
-OPENAI_API_KEY=sk-xxx
-WHITELIST=["861369046"]
+DEBUG=0
+
+NAPCAT_TOKEN=napcat
+NAPCAT_WS_URL=ws://127.0.0.1:3001
+BOT_DISPLAY_NAME=AI Bot
+WHITELIST=["176627392"]
+
+OUTPUT_DIR=output
+NAPCAT_MOUNT_OUTPUT_DIR=/app/shared-output
+
+OPENAI_API_KEY=replace-with-your-local-client-key
+OPENAI_BASE_URL=http://127.0.0.1:8317/v1
+RESPONSES_MODEL=gpt-5.4
+IMAGE_MODEL=gpt-image-2
+
+IMAGE_QUALITY=high
+IMAGE_FORMAT=png
+IMAGE_BACKGROUND=opaque
+IMAGE_MODERATION=low
+DEFAULT_PROMPT=Generate a clean product shot of a glass honey jar on a light background.
 ```
 
-说明：
+## 4. 环境变量说明
 
-- `OPENAI_API_KEY`
-  传给 OpenAI SDK 的 key
+### NapCat
+
+- `NAPCAT_TOKEN`
+  NapCat WebSocket 鉴权 token
+- `NAPCAT_WS_URL`
+  NapCat WebSocket 地址，默认 `ws://127.0.0.1:3001`
+- `BOT_DISPLAY_NAME`
+  合并转发节点显示昵称
 - `WHITELIST`
   允许机器人响应的群号列表，格式是 JSON 数组字符串
 
+### 图片输出与挂载
+
+- `OUTPUT_DIR`
+  机器人本地保存图片的目录
+- `NAPCAT_MOUNT_OUTPUT_DIR`
+  同一个目录在 NapCat 容器内的挂载路径
+
 例如：
 
+- 本机保存到 `./output/generated-xxx.png`
+- 容器挂载到 `/app/shared-output/generated-xxx.png`
+
+那么就设置：
+
 ```env
-WHITELIST=["861369046","123456789"]
+OUTPUT_DIR=output
+NAPCAT_MOUNT_OUTPUT_DIR=/app/shared-output
 ```
 
-如果需要更多调试日志，可以加：
+机器人会自动把本地路径转换成容器内路径，再发给 NapCat。
 
-```env
-DEBUG=1
+### CLIProxyAPI / OpenAI
+
+- `OPENAI_API_KEY`
+  调用 CLIProxyAPI 时使用的本地客户端 key，不是上游 provider 的原始 key
+- `OPENAI_BASE_URL`
+  CLIProxyAPI 的 OpenAI 兼容入口，例如 `http://127.0.0.1:8317/v1`
+- `RESPONSES_MODEL`
+  发送到 `/v1/responses` 的模型名
+- `IMAGE_MODEL`
+  `image_generation` tool 使用的图像模型
+
+### 生图默认参数
+
+- `IMAGE_QUALITY`
+- `IMAGE_FORMAT`
+- `IMAGE_BACKGROUND`
+- `IMAGE_MODERATION`
+- `DEFAULT_PROMPT`
+
+## 5. 启动
+
+```bash
+npm run start
 ```
 
-## 运行
-
-直接启动：
+或者：
 
 ```bash
 node napcat_ws.js
 ```
 
-如果想看更详细日志：
+如果需要更多日志：
 
 ```bash
-DEBUG=1 node napcat_ws.js
+DEBUG=1 npm run start
 ```
 
-## 命令说明
+## 6. 机器人命令
 
-### 1. 生图
+群里发送 `/help` 会看到实时帮助，当前支持：
 
-在白名单群内：
+- `@bot 生图 提示词`
+- 回复文本后 `生图 提示词`
+- 回复图片后 `改图 要求`
+- 回复图片后 `反推`
+- 回复文本或图片后 `Chat 问题`
+- 在命令里带 `3K_H` 或 `3K_V`
+
+示例：
 
 ```text
-@机器人 生图 一只在月球上喝咖啡的橘猫
+@bot 生图 赛博朋克猫娘 3K_V
 ```
-
-机器人会：
-
-1. 检测是否 @ 到自己
-2. 将任务加入本地队列
-3. 串行调用 `gpt-image-2`
-4. 通过合并转发把图片发回群里
-
-### 2. 基于回复内容继续生图
-
-如果回复了一条包含文本提示词的消息，再发送：
 
 ```text
-生图 让它变成赛博朋克风格
+回复一段提示词后发送：生图 加一点雨夜霓虹感
 ```
-
-机器人会先读取被回复消息，再把原始提示词和你的补充提示词拼起来继续生图。
-
-### 3. 图片反推
-
-回复一张图片后发送：
 
 ```text
-反推
+回复一张图后发送：改图 改成吉卜力风格
 ```
-
-机器人会尝试读取那张图片，并调用模型生成适合 `gpt-image-2` 的描述词。
-
-### 4. 帮助
-
-群里发送：
 
 ```text
-/help
+回复一张图后发送：反推
 ```
-
-## 日志
-
-项目里已经做了简单日志规范化：
-
-- `[napcat]`
-  NapCat 机器人运行日志
-- `[napcat:debug]`
-  NapCat 调试日志，仅在 `DEBUG=1` 时输出
-- `[image]`
-  生图 / 识图日志
-- `[image:debug]`
-  流式调试日志，仅在 `DEBUG=1` 时输出
-
-## 已知限制
-
-### 1. `CLIProxyAPI` 非流式返回不稳定
-
-当前链路下，`gpt-5.4` 的非流式结果经常为空，所以图片和识图逻辑主要依赖流式响应。
-
-### 2. NapCat 如果运行在 Docker 内，图片路径要额外处理
-
-当前代码里发图使用的是本地文件路径：
 
 ```text
-file:///absolute/path/to/image.png
+回复一张图后发送：Chat 这张图哪里还能优化？
 ```
 
-如果 NapCat 在 Docker 容器里运行，而图片保存在宿主机目录，容器内可能读不到这个文件。
+## 7. 已知事项
 
-这时通常需要：
+### 1. 图片发送依赖目录挂载
 
-- 给容器挂载宿主机图片目录
-或
-- 改成 HTTP URL 发图
+如果 NapCat 在 Docker 内，而机器人在宿主机运行，必须保证：
 
-### 3. 合并转发 / reply / forward 的消息结构可能在不同环境下不一致
+- `OUTPUT_DIR` 对应的宿主机目录被挂进 NapCat 容器
+- `NAPCAT_MOUNT_OUTPUT_DIR` 和容器内路径一致
 
-本地与服务器上，NapCat 返回的消息结构可能略有差异，尤其是：
+否则 NapCat 会出现找不到图片文件。
 
-- `reply`
-- `forward`
-- 图片段字段
+### 2. CLIProxyAPI / 上游网络超时会直接回群失败原因
 
-如果某个逻辑本地正常、服务器异常，优先打印完整回包排查。
+当前代码会把：
 
-## 项目结构
+- HTTP 500
+- SSE `error`
+- `response.failed`
 
-```text
-.
-├── .env.example
-├── .gitignore
-├── get_img.js
-├── napcat_ws.js
-├── output/
-├── package.json
-└── README.md
-```
+统一转成群消息提示。
 
-## 后续可改进项
+### 3. 非流式结果不稳定
 
-- 把 NapCat token 改成环境变量
-- 把 task 结构统一成显式类型
-- 给 `get_msg` Promise 加超时与失败处理
-- 把图片发送切到 HTTP URL，减少 Docker 文件路径问题
-- 清理 `get_img.js` 里的临时调试逻辑和本地假返回
+当前链路主要依赖流式 SSE 取结果。
+
+## 8. 参考链接
+
+- NapCat-Docker: https://github.com/NapNeko/NapCat-Docker
+- CLIProxyAPI: https://github.com/router-for-me/CLIProxyAPI
+- CLIProxyAPI Basic Configuration: https://help.router-for.me/configuration/basic
+- CLIProxyAPI OpenAI Compatibility: https://help.router-for.me/configuration/provider/openai-compatibility

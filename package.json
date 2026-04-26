@@ -2,10 +2,11 @@
   "name": "oai_playground",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "napcat_ws.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node index.js"
+    "dev": "node napcat_ws.js",
+    "start": "node napcat_ws.js"
   },
   "keywords": [],
   "author": "",

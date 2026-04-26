@@ -1,11 +1,17 @@
+import 'dotenv/config'
 import WebSocket from "ws"
 import { chat_with_content, gen_img, get_discrption_from_img } from "./get_img.js"
-import { log } from "node:console"
-const token = 'yzcqwer'
+import { join, relative, resolve, sep } from "node:path"
+import { pathToFileURL } from "node:url"
+const token = process.env.NAPCAT_TOKEN || ''
+const NAPCAT_WS_URL = process.env.NAPCAT_WS_URL || 'ws://127.0.0.1:3001'
 const WHITELIST = JSON.parse(process.env.WHITELIST || '[]')
 let self_qq_id = -999
 const DEBUG = process.env.DEBUG === '1'
-const ws = new WebSocket('ws://127.0.0.1:3001',{
+const BOT_DISPLAY_NAME = process.env.BOT_DISPLAY_NAME || 'AI Bot'
+const HOST_OUTPUT_DIR = resolve(process.env.OUTPUT_DIR || 'output')
+const NAPCAT_MOUNT_OUTPUT_DIR = process.env.NAPCAT_MOUNT_OUTPUT_DIR || HOST_OUTPUT_DIR
+const ws = new WebSocket(NAPCAT_WS_URL,{
     headers:{
         Authorization: `Bearer ${token}`
     },
@@ -39,6 +45,20 @@ function formatTaskError(err, maxLength = 220) {
     }
 
     return `${compactMessage.slice(0, maxLength)}...`
+}
+
+function toNapcatFileUrl(localPath) {
+    const absoluteLocalPath = resolve(localPath)
+    let napcatPath = absoluteLocalPath
+
+    if (
+        absoluteLocalPath === HOST_OUTPUT_DIR ||
+        absoluteLocalPath.startsWith(`${HOST_OUTPUT_DIR}${sep}`)
+    ) {
+        napcatPath = join(NAPCAT_MOUNT_OUTPUT_DIR, relative(HOST_OUTPUT_DIR, absoluteLocalPath))
+    }
+
+    return pathToFileURL(napcatPath).href
 }
 
 class user_queue{
@@ -99,7 +119,7 @@ function sendGroupMsg(ws, groupId, message, user_id = 'none', echo = 'send_group
                 type: 'node',
                 data: {
                     user_id: String(self_qq_id),
-	                nickname: 'AI Bot',
+	                nickname: BOT_DISPLAY_NAME,
                     content: [
                         {
                             type: 'at',
@@ -147,7 +167,7 @@ function send_group_img(ws, groupId, user_id, img_path, user_text) {
 	          type: 'node',
 	          data: {
 	            user_id: String(self_qq_id),
-	            nickname: 'AI Bot',
+	            nickname: BOT_DISPLAY_NAME,
 	            content: [
 	              {
 	                type: 'at',
@@ -168,12 +188,12 @@ function send_group_img(ws, groupId, user_id, img_path, user_text) {
 	          type: 'node',
 	          data: {
 	            user_id: String(self_qq_id),
-	            nickname: 'AI Bot',
+	            nickname: BOT_DISPLAY_NAME,
 	            content: [
 	              {
 	                type: 'image',
 	                data: {
-	                  file: `file:///${img_path}` // TODO: docker 内仍需可访问这个路径
+	                  file: toNapcatFileUrl(img_path)
 	                }
 	              }
 	            ]
@@ -182,7 +202,7 @@ function send_group_img(ws, groupId, user_id, img_path, user_text) {
 	      ],
 	      summary: 'AI 图片生成结果',
 	      prompt: '[合并转发]',
-	      source: 'AI Bot'
+	      source: BOT_DISPLAY_NAME
 	    },
 	    echo: `send_group_forward_${Date.now()}`
 	  }))
