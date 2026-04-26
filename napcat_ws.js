@@ -377,8 +377,8 @@ ws.on("message", async (raw_data)=>{
             else if (msg_data.data.text.trim() != ''){
                 if(msg_data.data.text.trim().startsWith('生图') && at_me)
                 {
-                        put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, false, false)
-                        return
+                    put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, false, false)
+                    return
                 }
 
 

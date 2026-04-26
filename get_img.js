@@ -143,9 +143,7 @@ async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img
                 }
             ]
         }
-    ] : prompt
-
-
+    ] : input_msg = prompt
     const response = await fetch(`${BASE_URL}/responses`, {
         method: "POST",
         headers: {
