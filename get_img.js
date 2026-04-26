@@ -110,6 +110,24 @@ function extractImageBase64(eventName, payload) {
     return "";
 }
 
+function extractSseErrorMessage(eventName, payload) {
+    if (eventName === "error" || payload?.type === "error") {
+        const errorInfo = payload?.error || payload;
+        return errorInfo?.message || "Unknown SSE error";
+    }
+
+    if (eventName === "response.failed" || payload?.type === "response.failed") {
+        return (
+            payload?.response?.error?.message ||
+            payload?.error?.message ||
+            payload?.message ||
+            "Response failed"
+        );
+    }
+
+    return "";
+}
+
 async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img_url) {
     let input_msg = ''
     img_edit ? input_msg = [
@@ -177,8 +195,8 @@ async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img
         }
 
         buffer += decoder.decode(value, { stream: true });
-        console.log('///////////')
-        console.log(buffer)
+        // console.log('///////////')
+        // console.log(buffer)
         const chunks = buffer.split(/\r?\n\r?\n/);
         console.log(chunks)
         buffer = chunks.pop() || "";
@@ -195,6 +213,12 @@ async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img
             }
 
             const payload = JSON.parse(data);
+            const errorMessage = extractSseErrorMessage(eventName || payload?.type || "", payload);
+
+            if (errorMessage) {
+                throw new Error(errorMessage);
+            }
+
             const imageBase64 = extractImageBase64(eventName || payload?.type || "", payload);
 
             if (imageBase64) {
@@ -217,7 +241,7 @@ export async function gen_img(prompt, resolution = 'auto', img_edit=false, img_u
     // return '/Users/Regenin/Code/oai_playground/output/generated-1776952903666.png'
     const imageBase64 = await requestImageGeneration(prompt, resolution, img_edit=img_edit, img_url=img_url);
     if (!imageBase64) {
-        return "[ERROR]:No final image returned from /v1/responses.";
+        throw new Error("No final image returned from /v1/responses.");
     }
     const outputPath = resolve("output", `generated-${Date.now()}.${FORMAT}`);
     await mkdir(dirname(outputPath), { recursive: true });

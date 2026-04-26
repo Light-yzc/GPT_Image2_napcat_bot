@@ -216,7 +216,12 @@ async function processQueue(ws) {
             try{
                 logInfo('start image task', { groupId: task.group_id, userId: task.user_id, prompt: task.data,resolution: task.resolution })
                 const result = await gen_img(task.data, task.resolution, task.edit, task.img_url)
-                send_group_img(ws, task.group_id, task.user_id, result, task.data)
+                if (result.startsWith('[ERROR]')) {
+                    sendGroupMsg(ws, task.group_id, result, task.user_id)
+                }
+                else {
+                    send_group_img(ws, task.group_id, task.user_id, result, task.data)
+                }
                 logInfo('image task finished', { output: result })
             } catch (err) {
                  logError('image task failed', err)
