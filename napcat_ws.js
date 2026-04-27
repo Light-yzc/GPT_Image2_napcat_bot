@@ -47,6 +47,13 @@ function formatTaskError(err, maxLength = 220) {
     return `${compactMessage.slice(0, maxLength)}...`
 }
 
+function stripResolutionFlags(text) {
+    return String(text || '')
+        .replace(/\b3k_[hv]\b/ig, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+}
+
 function toNapcatFileUrl(localPath) {
     const absoluteLocalPath = resolve(localPath)
     let napcatPath = absoluteLocalPath
@@ -178,7 +185,7 @@ function send_group_img(ws, groupId, user_id, img_path, user_text) {
 	              {
 	                type: 'text',
 	                data: {
-	                  text:  `你请求的 **${user_text}** 生成好了喵！`
+	                  text:  `你请求的 ${user_text} 生成好了喵！`
 	                }
 	              }
 	            ]
@@ -264,6 +271,7 @@ async function processQueue(ws) {
 async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg = false, edit_msg = false) {
     const trimed_msg_data = msg_data.data.text.trim()
     const lower_msg_data = trimed_msg_data.toLowerCase()
+    const cleaned_prompt = stripResolutionFlags(trimed_msg_data)
     let resolution = ''
     if (lower_msg_data.includes('3k_v')) resolution = '1728x3072'
     else if (lower_msg_data.includes('3k_h')) resolution = '3072x1728'
@@ -278,10 +286,11 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
                     // console.log(JSON.stringify(msg))
                     const forward_msg_data = msg.data?.text
                     if (forward_msg_data) {
-                        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: forward_msg_data, resolution: resolution })
+                        const merged_prompt = `${forward_msg_data}\r\n${cleaned_prompt}`.trim()
+                        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: merged_prompt, resolution: resolution })
                         process_queue(ws, {
                         'group_id': data.group_id,
-                        'data': `${forward_msg_data}\r\n${msg_data.data.text}`,
+                        'data': merged_prompt,
                         'user_id': data.user_id,
                         'resolution': resolution,
                         'edit': false
@@ -289,12 +298,29 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
                         return
                     }
                 }
+
+                if (msg.type === 'image' && edit_msg === false) {
+                    // console.log(JSON.stringify(msg))
+                    const img_url = msg.data?.url
+                    if (img_url) {
+                        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: cleaned_prompt, resolution: resolution })
+                        process_queue(ws, {
+                        'group_id': data.group_id,
+                        'data': cleaned_prompt,
+                        'user_id': data.user_id,
+                        'resolution': resolution,
+                        'edit': false,
+                        'img_url': img_url
+                        })
+                        return
+                    }
+                }
                 else if (msg.type === 'image' && edit_msg === true) {
                     const img_url = msg.data.url
-                    logInfo('edit image', { groupId: data.group_id, userId: data.user_id, resolution: resolution })
+                    logInfo('edit image', { groupId: data.group_id, userId: data.user_id, prompt: cleaned_prompt, resolution: resolution })
                     process_queue(ws, {
                     'group_id': data.group_id,
-                    'data': `${msg_data.data.text}`,
+                    'data': cleaned_prompt,
                     'user_id': data.user_id,
                     'resolution': resolution,
                     'edit': true,
@@ -305,7 +331,7 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
         }
     }
     else {
-        const chunked_data = msg_data.data.text
+        const chunked_data = cleaned_prompt
         logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
         process_queue(ws, {
                 'group_id': data.group_id,
@@ -358,21 +384,18 @@ ws.on("message", async (raw_data)=>{
         if (msg_data.type === 'text' && msg_data?.data?.text) {
             if (msg_data.data.text.includes('/help')){
                 const help_msg = [
-                    'bot 使用方法',
-                    '1. @bot 生图 + 提示词：直接生成图片',
-                    '2. 回复一条文本再发 生图：基于被回复内容继续补充提示词生图',
-                    '3. 回复一张图片再发 改图 + 要求：按你的要求做图生图',
-                    '4. 回复一张图片再发 反推：反推这张图的提示词',
-                    '5. 回复文本或图片再发 Chat + 问题：结合被回复内容继续对话',
-                    '6. 需要 3K 图时，在命令里加 3K_H 或 3K_V',
-                    '7. 发送 /help 可再次查看本帮助',
+                    'bot 帮助',
+                    '@bot 生图 提示词',
+                    '回复文本后 生图 补充词',
+                    '回复图片后 改图 要求',
+                    '回复图片后 反推',
+                    '回复文本/图片后 Chat 问题',
+                    '3K_H / 3K_V 可选',
                     '',
                     '示例：',
                     '@bot 生图 赛博朋克猫娘 3K_V',
-                    '回复一段提示词后发送：生图 加一点雨夜霓虹感',
-                    '回复一张图后发送：改图 改成吉卜力风格',
-                    '回复一张图后发送：反推',
-                    '回复一张图后发送：Chat 这张图哪里还能优化？',
+                    '回复图片：改图 改成吉卜力风格',
+                    '回复图片：Chat 这张图哪里还能优化？',
                 ].join('\r\n')
                 sendGroupMsg(ws, data.group_id, help_msg, data.user_id)
                 return

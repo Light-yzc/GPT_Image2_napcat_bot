@@ -128,7 +128,7 @@ function extractSseErrorMessage(eventName, payload) {
 async function requestImageGeneration(prompt, resolution = 'auto', img_edit, img_url) {
     let input_msg = prompt
 
-    if (img_edit) {
+    if (img_edit || img_url != '') {
         input_msg = [
             {
                 type: 'message', 
