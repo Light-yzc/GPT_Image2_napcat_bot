@@ -236,6 +236,10 @@ export async function gen_img(prompt, resolution = 'auto', img_edit=false, img_u
         responses_model: RESPONSES_MODEL,
         image_model: IMAGE_MODEL,
         prompt,
+        resolution,
+        img_edit,
+        hasImageReference: Boolean(img_url),
+        img_url: img_url || '',
     })
     // return '/Users/Regenin/Code/oai_playground/output/generated-1776952903666.png'
     const imageBase64 = await requestImageGeneration(prompt, resolution, img_edit=img_edit, img_url=img_url);

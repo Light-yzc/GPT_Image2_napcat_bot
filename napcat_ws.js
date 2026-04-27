@@ -226,6 +226,15 @@ ws.on('open', () => {
 })
 let generation = false
 function process_queue(ws, task) {
+    logInfo('queue task received', {
+        groupId: task.group_id,
+        userId: task.user_id,
+        prompt: task.data,
+        resolution: task.resolution,
+        edit: Boolean(task.edit),
+        hasImageReference: Boolean(task.img_url),
+        img_url: task.img_url || '',
+    })
     const queue_res = userQueue.mypush(task)
     sendGroupMsg(ws, task.group_id, queue_res, task.user_id)
     if (!generation){
@@ -241,7 +250,15 @@ async function processQueue(ws) {
         while (userQueue.queue.length > 0) {
             const task = userQueue.mypop()
             try{
-                logInfo('start image task', { groupId: task.group_id, userId: task.user_id, prompt: task.data,resolution: task.resolution })
+                logInfo('start image task', {
+                    groupId: task.group_id,
+                    userId: task.user_id,
+                    prompt: task.data,
+                    resolution: task.resolution,
+                    edit: Boolean(task.edit),
+                    hasImageReference: Boolean(task.img_url),
+                    img_url: task.img_url || '',
+                })
                 const result = await gen_img(task.data, task.resolution, task.edit, task.img_url)
                 if (result.startsWith('[ERROR]')) {
                     sendGroupMsg(ws, task.group_id, result, task.user_id)
@@ -280,6 +297,15 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
     if (reply_msg) {
         const promise_data = await get_msg_byID(ws, cur_reply_msg_id)
         logDebug('reply target fetched', promise_data)
+        logInfo('reply image task request', {
+            groupId: data.group_id,
+            userId: data.user_id,
+            replyId: cur_reply_msg_id,
+            raw_text: trimed_msg_data,
+            cleaned_prompt,
+            resolution,
+            edit: edit_msg,
+        })
         if (promise_data.data?.message) {
             for (const msg of promise_data.data.message) {
                 if (msg.type === 'text' && edit_msg === false) {
@@ -287,7 +313,14 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
                     const forward_msg_data = msg.data?.text
                     if (forward_msg_data) {
                         const merged_prompt = `${forward_msg_data}\r\n${cleaned_prompt}`.trim()
-                        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: merged_prompt, resolution: resolution })
+                        logInfo('enqueue image task from replied text', {
+                            groupId: data.group_id,
+                            userId: data.user_id,
+                            prompt: merged_prompt,
+                            resolution,
+                            edit: false,
+                            hasImageReference: false,
+                        })
                         process_queue(ws, {
                         'group_id': data.group_id,
                         'data': merged_prompt,
@@ -303,7 +336,15 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
                     // console.log(JSON.stringify(msg))
                     const img_url = msg.data?.url
                     if (img_url) {
-                        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: cleaned_prompt, resolution: resolution })
+                        logInfo('enqueue image task from replied image', {
+                            groupId: data.group_id,
+                            userId: data.user_id,
+                            prompt: cleaned_prompt,
+                            resolution,
+                            edit: false,
+                            hasImageReference: true,
+                            img_url,
+                        })
                         process_queue(ws, {
                         'group_id': data.group_id,
                         'data': cleaned_prompt,
@@ -317,7 +358,15 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
                 }
                 else if (msg.type === 'image' && edit_msg === true) {
                     const img_url = msg.data.url
-                    logInfo('edit image', { groupId: data.group_id, userId: data.user_id, prompt: cleaned_prompt, resolution: resolution })
+                    logInfo('enqueue edit image task from replied image', {
+                        groupId: data.group_id,
+                        userId: data.user_id,
+                        prompt: cleaned_prompt,
+                        resolution,
+                        edit: true,
+                        hasImageReference: true,
+                        img_url,
+                    })
                     process_queue(ws, {
                     'group_id': data.group_id,
                     'data': cleaned_prompt,
@@ -332,7 +381,15 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
     }
     else {
         const chunked_data = cleaned_prompt
-        logInfo('enqueue image task', { groupId: data.group_id, userId: data.user_id, prompt: chunked_data, resolution: resolution })
+        logInfo('enqueue direct image task', {
+            groupId: data.group_id,
+            userId: data.user_id,
+            raw_text: trimed_msg_data,
+            prompt: chunked_data,
+            resolution,
+            edit: false,
+            hasImageReference: false,
+        })
         process_queue(ws, {
                 'group_id': data.group_id,
                 'data': chunked_data,
