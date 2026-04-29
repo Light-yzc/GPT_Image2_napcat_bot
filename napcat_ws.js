@@ -3,6 +3,8 @@ import WebSocket from "ws"
 import { chat_with_content, gen_img, get_discrption_from_img } from "./get_img.js"
 import { join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
+import { type } from 'node:os'
+import { text } from 'node:stream/consumers'
 const token = process.env.NAPCAT_TOKEN || ''
 const NAPCAT_WS_URL = process.env.NAPCAT_WS_URL || 'ws://127.0.0.1:3001'
 const WHITELIST = JSON.parse(process.env.WHITELIST || '[]')
@@ -164,7 +166,7 @@ function get_msg_byID(ws, id) {
     })
 
 }
-function send_group_img(ws, groupId, user_id, img_path, user_text) {
+function send_group_img(ws, groupId, user_id, img_path, user_text, resolution) {
 	    ws.send(JSON.stringify({
 	    action: 'send_group_forward_msg',
 	    params: {
@@ -187,7 +189,14 @@ function send_group_img(ws, groupId, user_id, img_path, user_text) {
 	                data: {
 	                  text:  `你请求的 ${user_text} 生成好了喵！`
 	                }
-	              }
+	              },
+                  ...(resolution === 'auto' ? [{
+                    type: 'text', 
+                    data: {
+                        text: 'hint: 如果想生成高分辨率图片，可以在文本最后添加 3k_h(3k 横向图片) 或者 3k_v(3k 纵向图片)'
+                    }
+                    }] : []
+                  )
 	            ]
 	          }
 	        },
@@ -264,7 +273,7 @@ async function processQueue(ws) {
                     sendGroupMsg(ws, task.group_id, result, task.user_id)
                 }
                 else {
-                    send_group_img(ws, task.group_id, task.user_id, result, task.data)
+                    send_group_img(ws, task.group_id, task.user_id, result, task.data, task.resolution)
                 }
                 logInfo('image task finished', { output: result })
             } catch (err) {
