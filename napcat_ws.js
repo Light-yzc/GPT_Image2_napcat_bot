@@ -190,13 +190,6 @@ function send_group_img(ws, groupId, user_id, img_path, user_text, resolution) {
 	                  text:  `你请求的 ${user_text} 生成好了喵！`
 	                }
 	              },
-                  ...(resolution === 'auto' ? [{
-                    type: 'text', 
-                    data: {
-                        text: 'hint: 如果想生成高分辨率图片，可以在文本最后添加 3k_h(3k 横向图片) 或者 3k_v(3k 纵向图片)'
-                    }
-                    }] : []
-                  )
 	            ]
 	          }
 	        },
@@ -214,7 +207,25 @@ function send_group_img(ws, groupId, user_id, img_path, user_text, resolution) {
 	              }
 	            ]
 	          }
-	        }
+	        },
+            ...(resolution === 'auto' ? [
+                {
+                    type: 'node',
+                    data: {
+                        user_id: String(self_qq_id),
+                        nickname: BOT_DISPLAY_NAME, 
+                        content: [
+                                {
+                                type: 'text', 
+                                data: {
+                                    text: 'hint: 如果想生成高分辨率图片，可以在文本最后添加 3k_h(3k 横向图片) 或者 3k_v(3k 纵向图片)'
+                                }
+                                }
+                        ]
+                    }
+                }
+                ] : []
+                  )
 	      ],
 	      summary: 'AI 图片生成结果',
 	      prompt: '[合并转发]',
@@ -298,7 +309,7 @@ async function put_img_in_queue(ws, msg_data, cur_reply_msg_id, data, reply_msg 
     const trimed_msg_data = msg_data.data.text.trim()
     const lower_msg_data = trimed_msg_data.toLowerCase()
     const cleaned_prompt = stripResolutionFlags(trimed_msg_data)
-    let resolution = ''
+    let resolution = 'auto'
     if (lower_msg_data.includes('3k_v')) resolution = '1728x3072'
     else if (lower_msg_data.includes('3k_h')) resolution = '3072x1728'
     else  resolution = 'auto'
